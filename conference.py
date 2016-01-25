@@ -61,7 +61,8 @@ ANNOUNCEMENT_TPL = ('Last chance to attend! The following conferences '
                     'are nearly sold out: %s')
 MEMCACHE_SPEAKER_KEY = "FEATURED SPEAKER"
 FEATURED_SPEAKER_ANNOUNCEMENT_TPL = ('Featured speaker for this conference is %s.'
-                    ' Please plan on attending these sessions!')
+                    ' The sessions that feature this speaker are %s !' 
+                    ' Please plan on atending them.')
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 DEFAULTS = {
@@ -818,6 +819,60 @@ class ConferenceApi(remote.Service):
         """Add Session to WishList."""
         return self._addSessionToWishlist(request)
 
+############# TASK 2 ::  deleteSessionFromWishlist #############
+
+    @ndb.transactional(xg=True)
+    def _deleteSessionFromWishlist(self, request):
+        """Deletes the session from the user's list of sessions they are interested in attending."""
+       
+        # Get Current User
+        user = endpoints.get_current_user()
+	if not user:
+	    raise endpoints.UnauthorizedException('Authorization is required')
+	
+        # Get profile of user from Profile datastore
+	user_id = getUserId(user)
+	p_key = ndb.Key(Profile, user_id)
+	profile = p_key.get()
+	
+	# Create new Profile if it does not exist already
+	if not profile:
+	    profile = Profile(
+	                key = p_key,
+	                displayName = user.nickname(),
+	                mainEmail= user.email(),
+	                teeShirtSize = str(TeeShirtSize.NOT_SPECIFIED),
+	            )
+	    profile.put()
+
+        # Get websafesession key from request and raise hell if it does not resolve to a valid session       
+        ses_key = request.websafeSessionKey      
+        try:
+            sess = ndb.Key(urlsafe=ses_key).get() 
+        except:
+            raise endpoints.BadRequestException('No session found with key: %s' % ses_key)
+        
+        
+        # Check if user is in Wishlist 
+        if ses_key not in profile.SessionsInWishlist:
+            raise ConflictException( "This Session is not in WishList. Nothing to delete!")
+
+        # Delete from WishList
+        profile.SessionsInWishlist.remove(ses_key)
+        retval = True
+
+        # Write to Profile datastore & return
+        profile.put()
+        return BooleanMessage(data=True)
+
+
+    @endpoints.method(SESSION_POST_WISHLIST_REQUEST, BooleanMessage,
+            path='wishlist/delete/{websafeSessionKey}',
+            http_method='POST', name='deleteSessionFromWishlist')
+    def deleteSessionFromWishlist(self, request):
+        """Add Session to WishList."""
+        return self._deleteSessionFromWishlist(request)
+
 ############### TASK 2 ::  getSessionsInWishlist   ################
 
     @endpoints.method(message_types.VoidMessage, SessionForms,
@@ -946,9 +1001,12 @@ class ConferenceApi(remote.Service):
         #logging.debug("_cacheFeaturedSpeaker ::  speakerCount is %s", speakerCount)
         
         # If speaker is a featured speaker add the Announcement to MEMCACHE    
+        # making sure that Session Names are added as well to the announcement.
+     
         if speakerCount > 1:
             #logging.debug("_cacheFeaturedSpeaker :: Adding speaker %s to memcache ", str(speaker) )
-            Announcement = FEATURED_SPEAKER_ANNOUNCEMENT_TPL % str(speaker)
+            sessionList = ', '.join(sess.sessionName for sess in q)
+            Announcement = FEATURED_SPEAKER_ANNOUNCEMENT_TPL % ( str(speaker) , sessionList)
             memcache.set(MEMCACHE_SPEAKER_KEY, Announcement)
 
 

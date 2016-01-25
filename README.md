@@ -75,7 +75,10 @@ The are my reasons for implementing the way I did and some of the reasons for th
   getKeynoteSpeakers() - Returns all Speakers who speak in atleast one keynote. 
   getTotalNumberOfSessions - Returns the total number of Sessions across all conferences. While I understand that the Datastore Stats APIs
   are the best way to do aggregation on Kinds(for all large volumes and consistency), I resorted to a simple way of implementing them.
-  getNWSessionsBefore7() - I first tried both of the following unsuccessfully -
+  getNWSessionsBefore7() - 
+  
+  
+  I first tried both of the following unsuccessfully -
   
   ```q = q.filter( int(str(Session.startTime.hour)) < 19 )```
   
@@ -89,8 +92,16 @@ The are my reasons for implementing the way I did and some of the reasons for th
   
   ```ValueError: invalid literal for int() with base 10: 'Ti'```
   
-  So I went with the approach of iterating through the Workshop Filter and then adding the sessions with a start time
-  before 7 in a list and returning it. While I understand that google has a [restriction](https://cloud.google.com/appengine/docs/python/datastore/queries?hl=en#Python_Restrictions_on_queries), it did not seem intuitive as to why the error above was returned. 
+  I learnt the hardway that the Google Apps Engine has a restriction(see links [1](https://cloud.google.com/appengine/docs/python/datastore/queries?hl=en#Python_Restrictions_on_queries) and [2](https://cloud.google.com/appengine/docs/java/datastore/queries?csw=1#Java_Restrictions_on_queries)), where in an NDB query cannot have more than 1 property that has an inequality filter, due to performance considerations where in a query's potential results cannot be adjacent to each other, without this restriction. Since the query for this task requires more than 1 property that requires an Inequality filter, we cannot
+  solve this with an NDB query. It would require an iteration of results and then a filter applied to each item in the list.
+  So I went with the following approach.
+  
+  Iterate through the Session query with a inequality filter on Workshop and from each session in the loop only 
+  add the sessions with a start time (before 7) by an inequality filter using simple python (not an NDB query) and populate
+  another list. Return this list at the end.
+  
+  In any case, GAE's Value error messages did not seem intuitive at all. Couldn't GAE returned right away that more than one Inequality filter is 
+  not supported, I wonder.   
 
   
 + Task 4 (Add a Task Queue)   
